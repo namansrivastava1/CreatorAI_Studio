@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#101114">
+    <meta name="description" content="Discover AI creators, explore portfolios, and bring your next creative idea to life with CreatorAI Studio.">
+
+    <title>CreatorAI Studio — Find Your Creative Edge</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js" defer></script>
+</head>
+<body>
+
+    <div class="background-glow glow-one"></div>
+    <div class="background-glow glow-two"></div>
+
+    <!-- Navigation -->
+    <header class="navbar">
+        <a href="#home" class="logo" aria-label="CreatorAI Studio home">
+            <span class="logo-symbol">✳</span>
+            CreatorAI<span class="logo-light">Studio</span>
+        </a>
+
+        <nav class="nav-links" id="navLinks" aria-label="Main navigation">
+            <a href="#home">Home</a>
+            <a href="#creators">Explore Creators</a>
+            <a href="#how-it-works">How It Works</a>
+
+            <!-- Link to Hero Screen -->
+            <a href="./HERO%20SCREEN/index.html">Hero Screen ↗</a>
+        </nav>
+
+        <div class="nav-actions">
+            <a href="#creators" class="login-link">Sign in</a>
+            <a href="#brief" class="btn btn-small btn-primary">
+                Get Started <span>↗</span>
+            </a>
+        </div>
+
+        <button class="menu-toggle" id="menuToggle"
+                aria-label="Toggle navigation" aria-expanded="false"
+                aria-controls="navLinks">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+    </header>
+
+    <main>
+        <!-- Hero -->
+        <section class="hero section-width" id="home">
+            <div class="hero-content">
+                <div class="eyebrow">
+                    <span class="status-dot"></span>
+                    THE CREATIVE SIDE OF AI
+                </div>
+
+                <h1>
+                    Find the minds<br>
+                    behind the <span class="highlight">machine.</span>
+                </h1>
+
+                <p class="hero-description">
+                    Meet the AI creators turning wild ideas into incredible
+                    visuals, videos, and experiences. Discover talent.
+                    Build something extraordinary.
+                </p>
+
+                <div class="hero-buttons">
+                    <a href="#creators" class="btn btn-primary">
+                        Explore Creators <span class="arrow">↗</span>
+                    </a>
+
+                    <a href="#brief" class="btn btn-secondary">
+                        Create a Brief <span class="arrow">→</span>
+                    </a>
+                </div>
+
+                <div class="hero-proof">
+                    <div class="avatar-stack" aria-hidden="true">
+                        <span class="avatar avatar-one">🎨</span>
+                        <span class="avatar avatar-two">🤖</span>
+                        <span class="avatar avatar-three">✨</span>
+                        <span class="avatar avatar-four">🎬</span>
+                    </div>
+
+                    <div class="proof-text">
+                        <strong>Ideas meet imagination.</strong>
+                        <span>One marketplace. Endless possibilities.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Portfolio preview -->
+            <div class="hero-visual" aria-label="Featured AI creator portfolio">
+                <div class="visual-orbit orbit-one"></div>
+                <div class="visual-orbit orbit-two"></div>
+
+                <div class="floating-tag tag-top">
+                    <span class="tag-icon">✦</span>
+                    <div>
+                        <strong>AI-Powered</strong>
+                        <span>Creative workflow</span>
+                    </div>
+                </div>
+
+                <article class="preview-card">
+                    <div class="preview-topbar">
+                        <div class="window-dots">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <span class="preview-label">FEATURED PROJECT</span>
+                        <span class="preview-menu">•••</span>
+                    </div>
+
+                    <div class="artwork">
+                        <div class="art-grid"></div>
+                        <div class="art-ring ring-one"></div>
+                        <div class="art-ring ring-two"></div>
+                        <div class="art-orb"></div>
+
+                        <div class="art-copy">
+                            <span>CREATIVE EXPERIMENT 001</span>
+                            <h2>Beyond<br>Reality<span>.</span></h2>
+                        </div>
+
+                        <span class="art-sticker">GEN AI<br>ART</span>
+                    </div>
+
+                    <div class="project-info">
+                        <div class="creator-info">
+                            <div class="creator-avatar">A</div>
+                            <div>
+                                <h3>Alex Morgan <span class="verified">✓</span></h3>
+                                <p>AI Visual Artist</p>
+                            </div>
+                        </div>
+
+                        <div class="project-price">
+                            <span>PROJECTS FROM</span>
+                            <strong>$120</strong>
+                        </div>
+                    </div>
+
+                    <div class="project-tags">
+                        <span>Midjourney</span>
+                        <span>Generative Art</span>
+                        <span>Visual Design</span>
+                    </div>
+                </article>
+
+                <div class="floating-tag tag-bottom">
+                    <span class="tag-icon green-icon">✳</span>
+                    <div>
+                        <strong>Creative freedom</strong>
+                        <span>Powered by human ideas</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Trust / categories strip -->
+        <section class="trust-strip section-width" id="creators">
+            <div class="trust-heading">
+                <span class="mini-label">YOUR NEXT CREATIVE PARTNER</span>
+                <h2>Talent for every kind of idea.</h2>
+            </div>
+
+            <div class="category-list">
+                <button class="category-chip" data-category="Visual Art">
+                    <span>✦</span> AI Art
+                </button>
+                <button class="category-chip" data-category="Video">
+                    <span>▶</span> AI Video
+                </button>
+                <button class="category-chip" data-category="Design">
+                    <span>◈</span> Design
+                </button>
+                <button class="category-chip" data-category="3D">
+                    <span>⬡</span> 3D & Motion
+                </button>
+            </div>
+        </section>
+
+        <!-- Search / creator discovery -->
+        <section class="discovery section-width">
+            <div class="section-heading">
+                <div>
+                    <span class="mini-label">MAKE YOUR NEXT MOVE</span>
+                    <h2>Find your creative edge.</h2>
+                </div>
+                <p>Search by creator, skill, or creative specialty.</p>
+            </div>
+
+            <form class="search-bar" id="searchForm">
+                <span class="search-icon" aria-hidden="true">⌕</span>
+                <label class="visually-hidden" for="creatorSearch">
+                    Search creators
+                </label>
+                <input id="creatorSearch" type="search"
+                       placeholder="Try “AI artist” or “video creator”...">
+                <button class="btn btn-primary search-button" type="submit">
+                    Discover <span>↗</span>
+                </button>
+            </form>
+
+            <p class="search-feedback" id="searchFeedback" aria-live="polite">
+                Ready to discover your next creative collaborator?
+            </p>
+
+            <div class="creator-grid" id="creatorGrid">
+                <article class="creator-card" data-search="alex morgan visual art midjourney generative art">
+                    <div class="creator-art creator-art-one">
+                        <span class="art-category">GENERATIVE ART</span>
+                        <div class="mini-sphere"></div>
+                    </div>
+                    <div class="creator-card-body">
+                        <div class="card-title-row">
+                            <h3>Alex Morgan <span class="verified">✓</span></h3>
+                            <span class="availability-dot">● Available</span>
+                        </div>
+                        <p>AI Visual Artist</p>
+                        <div class="card-skills">
+                            <span>Midjourney</span>
+                            <span>AI Art</span>
+                        </div>
+                        <a class="card-link" href="#brief" data-creator="Alex Morgan">
+                            Collaborate <span>↗</span>
+                        </a>
+                    </div>
+                </article>
+
+                <article class="creator-card" data-search="sam rivera video runway motion video editing">
+                    <div class="creator-art creator-art-two">
+                        <span class="art-category">MOTION & FILM</span>
+                        <div class="mini-frame">PLAY</div>
+                    </div>
+                    <div class="creator-card-body">
+                        <div class="card-title-row">
+                            <h3>Sam Rivera <span class="verified">✓</span></h3>
+                            <span class="availability-dot">● Available</span>
+                        </div>
+                        <p>AI Video Creator</p>
+                        <div class="card-skills">
+                            <span>Runway</span>
+                            <span>Motion</span>
+                        </div>
+                        <a class="card-link" href="#brief" data-creator="Sam Rivera">
+                            Collaborate <span>↗</span>
+                        </a>
+                    </div>
+                </article>
+
+                <article class="creator-card" data-search="jordan lee design 3d blender product design">
+                    <div class="creator-art creator-art-three">
+                        <span class="art-category">FUTURE OBJECTS</span>
+                        <div class="mini-cube">◇</div>
+                    </div>
+                    <div class="creator-card-body">
+                        <div class="card-title-row">
+                            <h3>Jordan Lee <span class="verified">✓</span></h3>
+                            <span class="availability-dot">● Available</span>
+                        </div>
+                        <p>AI 3D Designer</p>
+                        <div class="card-skills">
+                            <span>Blender</span>
+                            <span>3D Design</span>
+                        </div>
+                        <a class="card-link" href="#brief" data-creator="Jordan Lee">
+                            Collaborate <span>↗</span>
+                        </a>
+                    </div>
+                </article>
+            </div>
+
+            <div class="empty-state" id="emptyState" hidden>
+                <span>✳</span>
+                <h3>No matching creators yet</h3>
+                <p>Try a different name, skill, or creative specialty.</p>
+                <button class="btn btn-secondary" id="resetSearch" type="button">
+                    Reset search
+                </button>
+            </div>
+        </section>
+
+        <!-- How it works -->
+        <section class="how-section section-width" id="how-it-works">
+            <span class="mini-label">SIMPLE BY DESIGN</span>
+            <h2>From idea to <span class="highlight">impact.</span></h2>
+
+            <div class="steps-grid">
+                <article class="step-card">
+                    <span class="step-number">01</span>
+                    <div class="step-icon">⌕</div>
+                    <h3>Discover talent</h3>
+                    <p>Explore AI creators by specialty, tools, style, and portfolio.</p>
+                </article>
+
+                <article class="step-card">
+                    <span class="step-number">02</span>
+                    <div class="step-icon">✎</div>
+                    <h3>Share your vision</h3>
+                    <p>Describe your idea, deliverables, creative direction, and budget.</p>
+                </article>
+
+                <article class="step-card">
+                    <span class="step-number">03</span>
+                    <div class="step-icon">✳</div>
+                    <h3>Make it happen</h3>
+                    <p>Connect with a creator and turn your concept into something real.</p>
+                </article>
+            </div>
+        </section>
+
+        <!-- Brief CTA -->
+        <section class="brief-section section-width" id="brief">
+            <div class="brief-content">
+                <span class="mini-label">HAVE AN IDEA?</span>
+                <h2>Your next big thing starts with a brief.</h2>
+                <p>Tell creators what you're imagining. Give your idea room to grow.</p>
+            </div>
+
+            <a href="mailto:hello@example.com?subject=CreatorAI%20Studio%20Project%20Brief"
+               class="btn btn-primary">
+                Start a Project <span>↗</span>
+            </a>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer section-width">
+        <a href="#home" class="logo">
+            <span class="logo-symbol">✳</span>
+            CreatorAI<span class="logo-light">Studio</span>
+        </a>
+
+        <p>Human imagination. AI-powered possibilities.</p>
+
+        <a href="#home" class="back-to-top">Back to top ↑</a>
+    </footer>
+
+</body>
+</html>

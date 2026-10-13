@@ -1,0 +1,566 @@
+"use strict";
+
+/* ==========================================================================
+   CreatorAI Studio: plain JavaScript version (no framework, no build step)
+   ========================================================================== */
+
+/* ---------- Config ---------- */
+// false = demo mode (template text made in the browser)
+// true  = call your backend: POST /api/generate and POST /api/refine
+const USE_API = false;
+const API_TIMEOUT_MS = 30000;
+const HISTORY_KEY = "creatorai-history-v1";
+const HISTORY_MAX = 10;
+const LIMITS = { topicMin: 3, topicMax: 500, extraMax: 300 };
+const CHAR_LIMITS = { x: 280, threads: 500, instagram: 2200 };
+
+/* ---------- Data ---------- */
+const CONTENT_TYPES = [
+  { id: "caption", label: "Social caption", hint: "Short, with hashtags", maxChars: 2200, platforms: ["instagram", "x", "facebook", "threads"] },
+  { id: "linkedin", label: "LinkedIn post", hint: "Story, lesson, question", maxChars: 3000, platforms: [] },
+  { id: "blog-intro", label: "Blog intro", hint: "Hook and roadmap", platforms: [] },
+  { id: "marketing", label: "Marketing copy", hint: "Headline, body, call to action", platforms: ["website", "email", "ad"] },
+  { id: "ideas", label: "Content ideas", hint: "Five angles to explore", platforms: ["instagram", "youtube", "linkedin", "blog"] },
+];
+const TONES = [
+  { id: "friendly", label: "Friendly" },
+  { id: "professional", label: "Professional" },
+  { id: "bold", label: "Bold" },
+  { id: "playful", label: "Playful" },
+  { id: "informative", label: "Informative" },
+];
+const AUDIENCES = [
+  { id: "students", label: "Students" },
+  { id: "creators", label: "Creators and followers" },
+  { id: "small-business", label: "Small business customers" },
+  { id: "professionals", label: "Professionals" },
+  { id: "general", label: "General public" },
+];
+const PLATFORMS = {
+  instagram: { label: "Instagram", hint: "2,200 characters" },
+  x: { label: "X", hint: "280 characters" },
+  facebook: { label: "Facebook" },
+  threads: { label: "Threads", hint: "500 characters" },
+  website: { label: "Website" },
+  email: { label: "Email" },
+  ad: { label: "Ad" },
+  youtube: { label: "YouTube" },
+  linkedin: { label: "LinkedIn" },
+  blog: { label: "Blog" },
+};
+const REFINEMENTS = [
+  { id: "shorter", label: "Shorter", hint: "Cut it to the essentials" },
+  { id: "longer", label: "Longer", hint: "Add a little more detail" },
+  { id: "hashtags", label: "Add hashtags", hint: "Append tags from the topic" },
+  { id: "emoji", label: "Add emoji", hint: "A couple, not a carnival" },
+  { id: "plainer", label: "Plainer", hint: "Remove emoji and hype" },
+];
+const OPENERS = {
+  friendly: ["Let's talk about", "Quick one about", "Something I keep coming back to:"],
+  professional: ["A note on", "Here's a practical look at", "Key takeaways on"],
+  bold: ["Stop overthinking", "Here's the truth about", "Nobody tells you this about"],
+  playful: ["Plot twist:", "Okay, hear me out:", "Fun fact about"],
+  informative: ["What you should know about", "A short guide to", "The basics of"],
+};
+const CLOSERS = {
+  friendly: "If you've tried something like this, I'd genuinely love to hear how it went.",
+  professional: "The practical takeaway: start with one measurable change and review it after two weeks.",
+  bold: "Most people read this, nod, and change nothing. Be the exception.",
+  playful: "No pressure though. Even a tiny first step counts (and yes, reading this counts).",
+  informative: "A good next step is to pick one of these points and test it for a week before adding more.",
+};
+const EMOJI = { friendly: ["🙂", "✨"], professional: ["📌", "✅"], bold: ["🔥", "💪"], playful: ["😄", "🎉"], informative: ["💡", "📝"] };
+const EMOJI_RE = /[\p{Extended_Pictographic}\uFE0F]/gu;
+const CUTOFFS = { instagram: { at: 125, label: "more" }, linkedin: { at: 210, label: "…see more" }, facebook: { at: 477, label: "See more" } };
+const HANDLES = { instagram: "yourhandle", x: "@yourhandle", threads: "yourhandle", facebook: "Your Page", linkedin: "Your Name" };
+
+/* ---------- Small helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const labelOf = (list, id) => (list.find((i) => i.id === id) || {}).label || id;
+const typeOf = (id) => CONTENT_TYPES.find((t) => t.id === id) || CONTENT_TYPES[0];
+const pick = (arr, i) => arr[((i % arr.length) + arr.length) % arr.length];
+const limitFor = (contentType, platform) => CHAR_LIMITS[platform] ?? typeOf(contentType).maxChars;
+const withTags = (body, tags) => (tags ? `${body}\n\n${tags}` : body);
+const optionsHtml = (list) => list.map((i) => `<option value="${i.id}">${esc(i.label)}</option>`).join("");
+
+class AppError extends Error {
+  constructor(message, kind) { super(message); this.kind = kind; }
+}
+
+function stats(text) {
+  const words = (text.trim().match(/\S+/g) || []).length;
+  return { words, minutes: Math.max(1, Math.round(words / 200)) };
+}
+
+function validate(f) {
+  const topic = f.topic.trim();
+  if (!topic) return "Add a topic or idea to write about.";
+  if (topic.length < LIMITS.topicMin) return `Make the topic at least ${LIMITS.topicMin} characters.`;
+  if (topic.length > LIMITS.topicMax) return `Shorten the topic to ${LIMITS.topicMax} characters or fewer.`;
+  if (f.extra.length > LIMITS.extraMax) return `Shorten the extra instructions to ${LIMITS.extraMax} characters or fewer.`;
+  if (!CONTENT_TYPES.some((t) => t.id === f.contentType)) return "Pick a content type.";
+  return null;
+}
+
+function hashtags(topic, extra) {
+  const words = `${extra} ${topic}`.toLowerCase().replace(/[^a-z0-9\s,]/g, " ").split(/[\s,]+/).filter((w) => w.length > 3);
+  return [...new Set(words)].slice(0, 4).map((w) => `#${w}`).join(" ");
+}
+
+/* ---------- Demo generator (used when USE_API is false) ---------- */
+function buildDraft(req, seed) {
+  const topic = req.topic.trim().replace(/\.$/, "");
+  const opener = pick(OPENERS[req.tone] || OPENERS.friendly, seed);
+  const audience = labelOf(AUDIENCES, req.audience).toLowerCase();
+  const platform = PLATFORMS[req.platform] ? PLATFORMS[req.platform].label : "";
+  const extra = req.extra.trim();
+  const note = extra ? `\n\n(Keywords to work in: ${extra})` : "";
+
+  switch (req.contentType) {
+    case "caption": {
+      const tags = hashtags(topic, extra);
+      const text = pick([
+        `${opener} ${topic}. Small steps, real progress, and a reason to start today. Save this for later.\n\n${tags}`,
+        `${opener} ${topic} 👀 Here's what changed once I gave it a proper try. Which part would you start with?\n\n${tags}`,
+        `${opener} ${topic}. One idea, three minutes, zero excuses. Tag someone who needs this.\n\n${tags}`,
+      ], seed);
+      return req.platform === "x" ? text.slice(0, 270) : text;
+    }
+    case "linkedin":
+      return `${opener} ${topic}.\n\nA year ago I would have skipped past this. Then I watched it change how a team I worked with spent their week.\n\nThree things stood out:\n\n1. Start smaller than feels useful.\n2. Write down what you expect before you begin.\n3. Share the messy first version, not the polished one.\n\nFor ${audience}, the second point matters most. It turns a vague goal into something you can check.\n\nWhat's one thing you'd add?${note}`;
+    case "blog-intro":
+      return `${opener} ${topic}.\n\nIf you're one of the many ${audience} who has wondered whether it's worth the effort, you're not alone. The advice online is either too general to act on or too technical to follow.\n\nThis post sits in the middle. We'll cover why it matters, the common mistakes that slow people down, and a simple plan you can start this week. By the end, you'll know exactly what your first step is.${note}`;
+    case "marketing":
+      return `Headline: ${topic}, made simple.\n\nBody: Built for ${audience} who want results without the busywork. Get started in minutes, see what's working, and spend your time on the parts that matter.${platform ? `\n\nFormat: ${platform}` : ""}\n\nCall to action: Try it free today.${note}`;
+    case "ideas":
+      return [
+        `Five content ideas about ${topic}${platform ? ` for ${platform}` : ""}:`,
+        "",
+        `1. A beginner's checklist: the first five things to know about ${topic}.`,
+        `2. Myth vs fact: three things ${audience} often get wrong.`,
+        `3. Behind the scenes: a day spent trying ${topic} for the first time.`,
+        "4. Before and after: what changed after 30 days.",
+        `5. Ask the audience: a poll on their biggest question about ${topic}.`,
+      ].join("\n") + note;
+    default:
+      return `${opener} ${topic}.${note}`;
+  }
+}
+
+/* ---------- Demo "quick changes" (used when USE_API is false) ---------- */
+function splitTags(text) {
+  const m = text.match(/\n\s*((?:#\w+\s*)+)$/);
+  return m ? { body: text.slice(0, m.index).trimEnd(), tags: m[1].trim() } : { body: text, tags: "" };
+}
+
+function refineLocally(text, action, req) {
+  const { body, tags } = splitTags(text.trim());
+  switch (action) {
+    case "shorter": {
+      const parts = body.match(/[^.!?\n]+[.!?]+|[^.!?\n]+$|\n+/g) || [body];
+      const keep = Math.max(1, Math.ceil(parts.filter((p) => p.trim()).length * 0.55));
+      let out = "", count = 0;
+      for (const p of parts) {
+        if (p.trim()) { if (count >= keep) break; count++; }
+        out += p;
+      }
+      return withTags(out.trim(), tags);
+    }
+    case "longer":
+      return withTags(`${body}\n\n${CLOSERS[req.tone] || CLOSERS.friendly}`, tags);
+    case "hashtags": {
+      const all = [...new Set(`${tags} ${hashtags(req.topic, req.extra)}`.split(/\s+/).filter(Boolean))].join(" ");
+      return withTags(body, all);
+    }
+    case "emoji": {
+      const [first, last] = EMOJI[req.tone] || EMOJI.friendly;
+      const paras = body.replace(EMOJI_RE, "").replace(/ {2,}/g, " ").split(/\n\n/);
+      paras[0] = `${first} ${paras[0].trim()}`;
+      if (paras.length > 1) paras[paras.length - 1] = `${paras[paras.length - 1].trim()} ${last}`;
+      return withTags(paras.join("\n\n"), tags);
+    }
+    case "plainer":
+      return body.replace(EMOJI_RE, "").replace(/!+/g, ".").replace(/\.{2,}/g, ".").replace(/ {2,}/g, " ").replace(/^ /gm, "");
+    default:
+      return text;
+  }
+}
+
+/* ---------- Backend calls ---------- */
+async function postJson(url, payload, fallbackMessage) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: ctrl.signal });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 429) throw new AppError("Too many requests right now. Wait a minute, then try again.", "rate-limit");
+    if (res.status === 400) throw new AppError(data.error || "The request was missing something. Check the form.", "validation");
+    if (!res.ok || typeof data.text !== "string") throw new AppError(data.error || fallbackMessage, "server");
+    return data.text;
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    if (err.name === "AbortError") throw new AppError("The request took longer than 30 seconds. Try again.", "timeout");
+    throw new AppError("Couldn't reach the server. Make sure the backend is running, then try again.", "network");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function generate(req, seed) {
+  const problem = validate(req);
+  if (problem) throw new AppError(problem, "validation");
+  if (new URLSearchParams(location.search).get("simulateError") === "1") {
+    await wait(900);
+    throw new AppError("The AI service didn't respond. Check your connection and try again.", "network");
+  }
+  if (!USE_API) {
+    await wait(1100 + Math.random() * 700);
+    return { text: buildDraft(req, seed), source: "demo", request: req, createdAt: Date.now() };
+  }
+  const text = await postJson("/api/generate", req, "The server couldn't generate content. Try again.");
+  return { text, source: "ai", request: req, createdAt: Date.now() };
+}
+
+async function refine(text, action, req) {
+  if (!text.trim()) throw new AppError("There's no draft to refine yet.", "validation");
+  if (!USE_API) {
+    await wait(500 + Math.random() * 400);
+    return refineLocally(text, action, req);
+  }
+  return postJson("/api/refine", { text, action, request: req }, "The server couldn't refine the draft. Try again.");
+}
+
+/* ---------- History (saved in this browser only) ---------- */
+function loadHistory() {
+  try {
+    const list = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+    return Array.isArray(list) ? list.filter((h) => h && h.request && typeof h.text === "string").slice(0, HISTORY_MAX) : [];
+  } catch { return []; }
+}
+function saveHistory() {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history.slice(0, HISTORY_MAX))); } catch { /* storage unavailable */ }
+}
+function clearHistory() {
+  try { localStorage.removeItem(HISTORY_KEY); } catch { /* storage unavailable */ }
+  state.history = [];
+  renderHistory();
+}
+function pushHistory(entry) {
+  state.history = [entry, ...state.history].slice(0, HISTORY_MAX);
+  saveHistory();
+  renderHistory();
+}
+
+/* ---------- State ---------- */
+const state = {
+  form: { topic: "", contentType: CONTENT_TYPES[0].id, tone: TONES[0].id, audience: AUDIENCES[0].id, platform: CONTENT_TYPES[0].platforms[0] || "", extra: "" },
+  status: "idle", // idle | loading | success | error
+  error: "",
+  result: null,
+  draft: "",
+  history: [],
+  lastSeed: 0,
+  view: "edit",
+  refining: null,
+  expanded: false,
+};
+
+/* ---------- Rendering ---------- */
+function renderStatic() {
+  $("formats").innerHTML = CONTENT_TYPES.map((t) => `<li><strong>${esc(t.label)}</strong><span>${esc(t.hint)}</span></li>`).join("");
+  $("chips").innerHTML = CONTENT_TYPES.map((t) => `<label class="chip" data-chip="${t.id}"><input type="radio" name="contentType" value="${t.id}" /><span class="chip__label">${esc(t.label)}</span><span class="chip__hint">${esc(t.hint)}</span></label>`).join("");
+  $("tone").innerHTML = optionsHtml(TONES);
+  $("audience").innerHTML = optionsHtml(AUDIENCES);
+  $("topic").maxLength = LIMITS.topicMax;
+  $("mode").className = `mode mode--${USE_API ? "ai" : "demo"}`;
+  $("mode").textContent = USE_API ? "Connected to AI backend" : "Demo mode: sample output, no AI model yet";
+  $("footer-status").textContent = USE_API
+    ? "Connected mode: drafts are generated by an AI model through the project backend."
+    : "Demo mode: drafts are sample text built from templates, not from an AI model. Real AI generation arrives with the backend.";
+}
+
+function updateTopicMeta() {
+  const f = state.form;
+  const msg = f.topic.length > 0 ? validate({ ...f, extra: "" }) : null;
+  $("topic-msg").textContent = msg || "One or two sentences is enough.";
+  $("topic-count").textContent = `${f.topic.length}/${LIMITS.topicMax}`;
+  $("topic").setAttribute("aria-invalid", String(!!msg));
+}
+
+function syncForm() {
+  const f = state.form;
+  const platforms = typeOf(f.contentType).platforms;
+  $("topic").value = f.topic;
+  $("tone").value = f.tone;
+  $("audience").value = f.audience;
+  $("extra").value = f.extra;
+  document.querySelectorAll("#chips .chip").forEach((chip) => {
+    const on = chip.dataset.chip === f.contentType;
+    chip.classList.toggle("is-on", on);
+    chip.querySelector("input").checked = on;
+  });
+  $("platform-field").hidden = platforms.length === 0;
+  $("platform").innerHTML = platforms.map((p) => `<option value="${p}">${esc(PLATFORMS[p].label + (PLATFORMS[p].hint ? ` (${PLATFORMS[p].hint})` : ""))}</option>`).join("");
+  $("platform").value = f.platform;
+  updateTopicMeta();
+}
+
+function renderActions() {
+  const loading = state.status === "loading";
+  const canRetry = state.status === "error" && !validate(state.form);
+  $("form-actions").innerHTML =
+    `<button class="btn btn--primary" type="submit" ${loading ? "disabled" : ""} aria-busy="${loading}">${loading ? '<span class="spinner" aria-hidden="true"></span>Writing your draft' : "Generate content"}</button>` +
+    `<span class="form__kbd muted" aria-hidden="true">Ctrl + Enter</span>` +
+    (canRetry ? `<button class="btn btn--ghost" type="button" data-action="retry">Try again</button>` : "");
+  $("alert").hidden = state.status !== "error";
+  $("alert").textContent = state.error;
+}
+
+function linkTags(text) {
+  return text.split(/(\s+)/).map((p) => (/^[#@]\w+$/.test(p) ? `<span class="pv__tag">${esc(p)}</span>` : esc(p))).join("");
+}
+
+function previewHtml(text, contentType, platform) {
+  const site = contentType === "linkedin" ? "linkedin" : platform;
+  const cut = CUTOFFS[site];
+  const cap = CHAR_LIMITS[platform];
+  if (!cut && !cap) {
+    return `<div class="pv pv--doc" aria-label="Preview">${text.split(/\n{2,}/).map((p) => `<p>${linkTags(p)}</p>`).join("")}</div>`;
+  }
+  const over = cap && text.length > cap;
+  const collapsed = !over && cut && !state.expanded && text.length > cut.at;
+  const shown = collapsed ? text.slice(0, cut.at).trimEnd() : text;
+  const body = over ? `${linkTags(text.slice(0, cap))}<mark class="pv__over">${esc(text.slice(cap))}</mark>` : linkTags(shown);
+  const more = collapsed ? ` <button type="button" class="pv__more" data-action="expand">${esc(cut.label)}</button>` : "";
+  let note = "";
+  if (over) note = `<p class="pv__warn">The highlighted part is over the ${cap}-character limit and would be rejected.</p>`;
+  else if (cut && text.length > cut.at) note = `<p class="pv__note">Readers see the first ${cut.at} characters before "${esc(cut.label)}". Put the hook before that line.</p>`;
+  return `<div class="pv" aria-label="Preview as it would appear on ${esc(site)}">
+    <div class="pv__head"><span class="pv__avatar" aria-hidden="true"></span><div><div class="pv__name">${esc(HANDLES[site] || "Your account")}</div><div class="pv__meta">Just now</div></div></div>
+    <div class="pv__body">${body}${more}</div>${note}</div>`;
+}
+
+function updateMeta() {
+  const countEl = $("count");
+  if (!countEl || !state.result) return;
+  const { contentType, platform } = state.result.request;
+  const limit = limitFor(contentType, platform);
+  const over = limit !== undefined && state.draft.length > limit;
+  const s = stats(state.draft);
+  countEl.className = `count${over ? " count--over" : ""}`;
+  countEl.textContent = `${state.draft.length.toLocaleString()} characters${limit ? ` of ${limit.toLocaleString()}` : ""}${over ? " · too long for this platform" : ""} · ${s.words} words · ${s.minutes} min read`;
+  $("edited").hidden = state.draft === state.result.text;
+}
+
+function renderResult() {
+  const el = $("result");
+  if (state.status === "loading") {
+    el.innerHTML = `<div class="result__loading" aria-label="Generating"><div class="shimmer"></div><div class="shimmer shimmer--short"></div><div class="shimmer"></div><div class="shimmer shimmer--mid"></div></div>`;
+    return;
+  }
+  if (!state.result) {
+    el.innerHTML = `<div class="result__empty"><p class="result__empty-title">Your draft will appear here</p><p>Fill in a topic on the left and choose a format. You can edit the result before copying it.</p></div>`;
+    return;
+  }
+  const r = state.result;
+  const req = r.request;
+  const editing = state.view === "edit";
+  const pane = editing
+    ? `<div id="pane-edit" role="tabpanel" aria-labelledby="tab-edit"><label class="sr-only" for="draft">Generated draft, editable</label><textarea id="draft" class="result__text" rows="12" spellcheck="true"></textarea></div>`
+    : `<div id="pane-preview" role="tabpanel" aria-labelledby="tab-preview">${previewHtml(state.draft, req.contentType, req.platform)}</div>`;
+  const refineButtons = REFINEMENTS.map((a) => {
+    const busy = state.refining === a.id;
+    return `<button type="button" class="btn btn--ghost btn--xs" title="${esc(a.hint)}" data-action="refine" data-id="${a.id}" ${state.refining ? "disabled" : ""} aria-busy="${busy}">${busy ? '<span class="spinner spinner--dark" aria-hidden="true"></span>' : ""}${esc(a.label)}</button>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="result__head">
+      <div class="result__tags">
+        <span class="tag">${esc(labelOf(CONTENT_TYPES, req.contentType))}</span>
+        <span class="tag">${esc(labelOf(TONES, req.tone))}</span>
+        ${PLATFORMS[req.platform] ? `<span class="tag">${esc(PLATFORMS[req.platform].label)}</span>` : ""}
+      </div>
+      <span class="source source--${r.source}">${r.source === "ai" ? "AI generated" : "Demo output"}</span>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Draft view">
+      <button type="button" role="tab" id="tab-edit" class="tab" aria-selected="${editing}" aria-controls="pane-edit" data-action="tab-edit">Edit</button>
+      <button type="button" role="tab" id="tab-preview" class="tab" aria-selected="${!editing}" aria-controls="pane-preview" data-action="tab-preview">Preview</button>
+    </div>
+    ${pane}
+    <div class="refine" aria-label="Quick changes"><span class="refine__label">Quick changes</span><div class="refine__row">${refineButtons}</div></div>
+    <div class="result__foot">
+      <span class="count" id="count"></span>
+      <div class="result__actions">
+        <button class="btn btn--ghost btn--sm" type="button" data-action="regenerate">Regenerate</button>
+        <button class="btn btn--ghost btn--sm" type="button" data-action="download">Download</button>
+        <button class="btn btn--primary btn--sm" type="button" data-action="copy">Copy</button>
+      </div>
+    </div>
+    <p class="result__edited" id="edited" hidden>Edited since it was generated.</p>`;
+  if (editing) $("draft").value = state.draft;
+  updateMeta();
+}
+
+function renderHistory() {
+  $("history").hidden = state.history.length === 0;
+  $("history-list").innerHTML = state.history.map((h, i) => `<li><button type="button" class="history__item" data-action="history" data-index="${i}"><span class="history__topic">${esc(h.request.topic)}</span><span class="history__meta">${esc(labelOf(CONTENT_TYPES, h.request.contentType))} · ${esc(labelOf(TONES, h.request.tone))} · ${h.source === "ai" ? "AI" : "Demo"}</span></button></li>`).join("");
+}
+
+function render() {
+  renderActions();
+  renderResult();
+}
+
+/* ---------- Actions ---------- */
+function friendlyError(err, fallback) {
+  return err instanceof AppError ? err.message : fallback;
+}
+
+async function runGenerate(seed) {
+  const problem = validate(state.form);
+  if (problem) {
+    state.status = "error";
+    state.error = problem;
+    render();
+    $("topic").focus();
+    return;
+  }
+  state.status = "loading";
+  state.error = "";
+  state.lastSeed = seed;
+  render();
+  try {
+    const res = await generate({ ...state.form }, seed);
+    state.result = res;
+    state.draft = res.text;
+    state.expanded = false;
+    state.status = "success";
+    pushHistory(res);
+    render();
+    setTimeout(() => $("result").scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
+  } catch (err) {
+    state.status = "error";
+    state.error = friendlyError(err, "Something went wrong. Try again.");
+    render();
+  }
+}
+
+async function runRefine(action) {
+  if (!state.result || state.refining) return;
+  state.refining = action;
+  state.error = "";
+  render();
+  try {
+    const text = await refine(state.draft, action, state.result.request);
+    state.result = { ...state.result, text, createdAt: Date.now() };
+    state.draft = text;
+    pushHistory(state.result);
+  } catch (err) {
+    state.status = "error";
+    state.error = friendlyError(err, "Couldn't refine the draft. Try again.");
+  } finally {
+    state.refining = null;
+    render();
+  }
+}
+
+async function copyDraft() {
+  const btn = document.querySelector('[data-action="copy"]');
+  try {
+    await navigator.clipboard.writeText(state.draft);
+    if (btn) {
+      btn.textContent = "Copied";
+      setTimeout(() => { if (btn.isConnected) btn.textContent = "Copy"; }, 1800);
+    }
+  } catch {
+    state.status = "error";
+    state.error = "Copy isn't available in this browser. Select the text and copy it manually.";
+    renderActions();
+  }
+}
+
+function downloadDraft() {
+  const slug = state.result.request.topic.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "draft";
+  const url = URL.createObjectURL(new Blob([state.draft], { type: "text/plain;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${slug}.txt`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function loadFromHistory(index) {
+  const entry = state.history[index];
+  if (!entry) return;
+  state.form = { ...entry.request };
+  state.result = entry;
+  state.draft = entry.text;
+  state.status = "success";
+  state.error = "";
+  state.expanded = false;
+  syncForm();
+  render();
+  setTimeout(() => $("result").scrollIntoView({ behavior: "smooth", block: "nearest" }), 50);
+}
+
+function startCreating() {
+  $("studio").scrollIntoView({ behavior: "smooth", block: "start" });
+  setTimeout(() => $("topic").focus({ preventScroll: true }), 450);
+}
+
+/* ---------- Events ---------- */
+document.addEventListener("click", (e) => {
+  const startBtn = e.target.closest("[data-start]");
+  if (startBtn) return startCreating();
+  const btn = e.target.closest("[data-action]");
+  if (!btn) return;
+  const { action, id, index } = btn.dataset;
+  if (action === "retry") runGenerate(state.lastSeed);
+  else if (action === "regenerate") runGenerate(state.lastSeed + 1);
+  else if (action === "copy") copyDraft();
+  else if (action === "download") downloadDraft();
+  else if (action === "refine") runRefine(id);
+  else if (action === "history") loadFromHistory(Number(index));
+  else if (action === "expand") { state.expanded = true; renderResult(); }
+  else if (action === "tab-edit" || action === "tab-preview") { state.view = action === "tab-edit" ? "edit" : "preview"; renderResult(); }
+});
+
+document.addEventListener("input", (e) => {
+  if (e.target.id === "draft") { state.draft = e.target.value; updateMeta(); }
+});
+
+$("topic").addEventListener("input", (e) => { state.form.topic = e.target.value; updateTopicMeta(); });
+$("extra").addEventListener("input", (e) => { state.form.extra = e.target.value; });
+$("tone").addEventListener("change", (e) => { state.form.tone = e.target.value; });
+$("audience").addEventListener("change", (e) => { state.form.audience = e.target.value; });
+$("platform").addEventListener("change", (e) => { state.form.platform = e.target.value; });
+
+$("chips").addEventListener("change", (e) => {
+  if (e.target.name !== "contentType") return;
+  const type = typeOf(e.target.value);
+  state.form.contentType = type.id;
+  if (!type.platforms.includes(state.form.platform)) state.form.platform = type.platforms[0] || "";
+  syncForm();
+});
+
+$("form").addEventListener("submit", (e) => { e.preventDefault(); runGenerate(0); });
+$("form").addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && state.status !== "loading") { e.preventDefault(); runGenerate(0); }
+});
+$("clear-history").addEventListener("click", clearHistory);
+
+const nav = $("nav");
+const onScroll = () => nav.classList.toggle("nav--solid", window.scrollY > window.innerHeight * 0.6);
+window.addEventListener("scroll", onScroll, { passive: true });
+
+/* ---------- Start ---------- */
+state.history = loadHistory();
+renderStatic();
+syncForm();
+render();
+renderHistory();
+onScroll();

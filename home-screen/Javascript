@@ -1,0 +1,178 @@
+"use strict";
+
+/* =========================================================
+   CreatorAI Studio: main page script
+   - Mobile menu
+   - Creator search (live, as you type)
+   - Category chips that filter the creators
+   - "Collaborate" links that personalise the brief email
+   ========================================================= */
+
+(() => {
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+  const menuToggle = $("#menuToggle");
+  const navLinks = $("#navLinks");
+  const searchForm = $("#searchForm");
+  const searchInput = $("#creatorSearch");
+  const feedback = $("#searchFeedback");
+  const grid = $("#creatorGrid");
+  const emptyState = $("#emptyState");
+  const resetButton = $("#resetSearch");
+  const chips = $$(".category-chip");
+  const cards = grid ? $$(".creator-card", grid) : [];
+
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const scrollBehavior = prefersReducedMotion ? "auto" : "smooth";
+
+  /* ---------- Mobile menu ---------- */
+  if (menuToggle && navLinks) {
+    const isOpen = () => navLinks.classList.contains("open");
+
+    const setMenu = (open) => {
+      navLinks.classList.toggle("open", open);
+      menuToggle.setAttribute("aria-expanded", String(open));
+    };
+
+    menuToggle.addEventListener("click", () => setMenu(!isOpen()));
+
+    // Close after choosing a link
+    navLinks.addEventListener("click", (event) => {
+      if (event.target.closest("a")) setMenu(false);
+    });
+
+    // Close with Escape (and return focus to the button)
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && isOpen()) {
+        setMenu(false);
+        menuToggle.focus();
+      }
+    });
+
+    // Close when clicking outside the header
+    document.addEventListener("click", (event) => {
+      if (isOpen() && !event.target.closest(".navbar")) setMenu(false);
+    });
+
+    // Reset when the screen grows past the mobile breakpoint
+    window.matchMedia("(min-width: 681px)").addEventListener("change", (event) => {
+      if (event.matches) setMenu(false);
+    });
+  }
+
+  /* ---------- Creator search ---------- */
+  const DEFAULT_FEEDBACK = feedback ? feedback.textContent.trim() : "";
+
+  const normalize = (text) =>
+    text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  // Searchable text for each card: its data-search keywords plus its visible text
+  const haystacks = cards.map((card) => ` ${normalize(`${card.dataset.search || ""} ${card.textContent}`)}`);
+
+  // A term matches the start of any word ("artist" also matches "artists")
+  const termMatches = (haystack, term) => {
+    if (haystack.includes(` ${term}`)) return true;
+    return term.length > 3 && term.endsWith("s") && haystack.includes(` ${term.slice(0, -1)}`);
+  };
+
+  const setFeedback = (query, visible, hasTerms) => {
+    if (!feedback) return;
+    if (!hasTerms) {
+      feedback.textContent = DEFAULT_FEEDBACK;
+    } else if (visible === 0) {
+      feedback.textContent = `No creators found for “${query}”.`;
+    } else {
+      feedback.textContent = `Showing ${visible} of ${cards.length} creator${visible === 1 ? "" : "s"} for “${query}”.`;
+    }
+  };
+
+  const applyFilter = (rawQuery) => {
+    const query = rawQuery.trim();
+    const terms = normalize(query).split(" ").filter(Boolean);
+    let visible = 0;
+
+    cards.forEach((card, index) => {
+      const show = terms.every((term) => termMatches(haystacks[index], term));
+      card.hidden = !show;
+      if (show) visible += 1;
+    });
+
+    if (emptyState) emptyState.hidden = visible > 0;
+    setFeedback(query, visible, terms.length > 0);
+  };
+
+  // Highlight the chip whose category matches the search box
+  const syncChips = () => {
+    const current = normalize(searchInput ? searchInput.value : "");
+    chips.forEach((chip) => {
+      const on = current !== "" && normalize(chip.dataset.category || "") === current;
+      chip.classList.toggle("active", on);
+      chip.setAttribute("aria-pressed", String(on));
+    });
+  };
+
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      applyFilter(searchInput.value);
+      syncChips();
+    });
+  }
+
+  if (searchForm) {
+    searchForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      applyFilter(searchInput.value);
+      syncChips();
+      if (grid) grid.scrollIntoView({ behavior: scrollBehavior, block: "nearest" });
+    });
+  }
+
+  // Category chips: click to filter, click again to clear
+  chips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      if (!searchInput) return;
+      const wasActive = chip.classList.contains("active");
+      searchInput.value = wasActive ? "" : chip.dataset.category || "";
+      applyFilter(searchInput.value);
+      syncChips();
+      if (searchForm) searchForm.scrollIntoView({ behavior: scrollBehavior, block: "center" });
+    });
+  });
+
+  if (resetButton && searchInput) {
+    resetButton.addEventListener("click", () => {
+      searchInput.value = "";
+      applyFilter("");
+      syncChips();
+      searchInput.focus();
+    });
+  }
+
+  /* ---------- "Collaborate" personalises the brief ---------- */
+  const briefLink = $('.brief-section a[href^="mailto:"]');
+  const briefText = $(".brief-content p");
+
+  if (grid && briefLink) {
+    const mailBase = briefLink.getAttribute("href").split("?")[0];
+
+    grid.addEventListener("click", (event) => {
+      const link = event.target.closest(".card-link[data-creator]");
+      if (!link) return;
+
+      const name = link.dataset.creator;
+      const subject = encodeURIComponent(`CreatorAI Studio Project Brief for ${name}`);
+      briefLink.setAttribute("href", `${mailBase}?subject=${subject}`);
+      if (briefText) briefText.textContent = `Tell ${name} what you're imagining. Give your idea room to grow.`;
+    });
+  }
+
+  /* ---------- Start ---------- */
+  syncChips();
+})();
